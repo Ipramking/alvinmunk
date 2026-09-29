@@ -3,8 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { completeQuestMock, getEarnedScoreMock, getStreakMock, getWalletMock, toastMock } = vi.hoisted(() => ({
+const { completeQuestMock, getCompletedMock, getEarnedScoreMock, getStreakMock, getWalletMock, toastMock } = vi.hoisted(() => ({
   completeQuestMock: vi.fn(),
+  getCompletedMock: vi.fn(),
   getEarnedScoreMock: vi.fn(),
   getStreakMock: vi.fn(),
   getWalletMock: vi.fn(),
@@ -12,7 +13,11 @@ const { completeQuestMock, getEarnedScoreMock, getStreakMock, getWalletMock, toa
 }));
 
 vi.mock('@/lib/wallet', () => ({ getWallet: getWalletMock }));
-vi.mock('@/lib/quests', () => ({ completeQuest: completeQuestMock, getStreak: getStreakMock }));
+vi.mock('@/lib/quests', () => ({
+  completeQuest: completeQuestMock,
+  getCompleted: getCompletedMock,
+  getStreak: getStreakMock,
+}));
 vi.mock('@/lib/reputation', () => ({ getEarnedScore: getEarnedScoreMock }));
 vi.mock('@/lib/registry', () => ({ resolveHandle: vi.fn() }));
 vi.mock('@/components/ui/toaster', () => ({ toast: toastMock }));
@@ -43,6 +48,7 @@ describe('Quests', () => {
 
   beforeEach(() => {
     completeQuestMock.mockReset().mockResolvedValue({ ok: true });
+    getCompletedMock.mockReset().mockResolvedValue([false, false, false]);
     getEarnedScoreMock.mockReset().mockResolvedValue(12);
     getStreakMock.mockReset().mockResolvedValue({ weeks: 1, best: 2, lastWeek: 0 });
     getWalletMock.mockReset().mockResolvedValue({ kind: 'dev', address: ADDRESS });
@@ -65,7 +71,10 @@ describe('Quests', () => {
 
   const vouchBackButton = () =>
     [...container.querySelectorAll('button')].find(
-      (item) => item.textContent?.startsWith('Claim vouch-back') || item.textContent === 'Verifying…',
+      (item) =>
+        item.textContent?.startsWith('Claim vouch-back') ||
+        item.textContent === 'Verifying…' ||
+        item.textContent === 'Completed',
     )!;
 
   const earnedBadge = () =>
@@ -123,6 +132,17 @@ describe('Quests', () => {
     expect(container.textContent).not.toContain('streak read failed');
   });
 
+  it('shows completed quests as done when the page loads', async () => {
+    getCompletedMock.mockResolvedValueOnce([true, false, true]);
+    await mount();
+    const buttons = [...container.querySelectorAll('button')];
+    expect(buttons[0].textContent).toBe('Completed');
+    expect(buttons[0].disabled).toBe(true);
+    expect(buttons[1].textContent).toBe('Claim invite reward');
+    expect(buttons[2].textContent).toBe('Completed');
+    expect(buttons[2].disabled).toBe(true);
+  });
+
   it('does not hold the quest buttons while a refresh read hangs', async () => {
     getEarnedScoreMock.mockResolvedValueOnce(12).mockReturnValueOnce(new Promise(() => {}));
     getStreakMock.mockResolvedValueOnce({ weeks: 1, best: 2, lastWeek: 0 }).mockReturnValueOnce(new Promise(() => {}));
@@ -131,8 +151,7 @@ describe('Quests', () => {
     await clickVouchBack();
 
     expectReportedSuccess();
-    expect(vouchBackButton().textContent).toMatch(/^Claim vouch-back/);
-    expect(vouchBackButton().disabled).toBe(false);
+    expect(vouchBackButton().textContent).toBe('Completed');
   });
 
   it('still reports a failed quest', async () => {
